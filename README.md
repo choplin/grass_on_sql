@@ -8,7 +8,7 @@ FUNCTION run_grass(text) RETURNS text;
 
 ## Usage
 
-SELECT run_grass('wWWwwww');
+psql -f grass.sql
 
 ## Example
 
