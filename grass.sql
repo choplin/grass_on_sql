@@ -740,3 +740,78 @@ SELECT
     exec( parse($1) )
 $$ LANGUAGE SQL
 ;
+
+/*
+ * Parser for homuhomu
+ */
+CREATE OR REPLACE FUNCTION build_tree_homu (Text) RETURNS tree AS $$
+WITH RECURSIVE
+src(chr,len) AS (
+    SELECT
+        array_agg(substring(s from 1 for 1))
+        ,array_agg(char_length(s) / 2)
+    FROM
+        regexp_split_to_table($1, E'\\s+') AS t(s)
+)
+,rec(tree, idx, nextl) AS (
+    SELECT
+        tree( ARRAY[]::Node[] )::Tree
+        ,1::Int
+        ,1::Int
+    UNION ALL
+    SELECT
+        CASE idx % 2
+            WHEN 1 THEN add_abs_node_n_times(tree, len[idx])
+            WHEN 0 THEN add_node(tree, app_node(nextl,nextl+1,(len[idx],len[idx+1])))
+        END
+        ,CASE idx % 2
+            WHEN 1 THEN idx + 1
+            WHEN 0 THEN idx + 2
+        END
+        ,CASE idx % 2
+            WHEN 1 THEN nextl + len[idx]
+            WHEN 0 THEN nextl + 2
+        END
+    FROM
+        rec, src
+    WHERE
+        idx <= array_length(chr, 1)
+)
+SELECT
+    tree
+FROM
+    rec
+ORDER BY
+    idx DESC
+LIMIT 1
+$$ LANGUAGE SQL
+;
+
+CREATE OR REPLACE FUNCTION sanitize_source_homu (Text) RETURNS Text AS $$
+    SELECT
+        regexp_replace(
+            regexp_replace(
+                $1, '^[\s]*', '' ,'ng'
+            )
+            ,'[^ほむ\s]', '', 'g'
+        )
+$$ LANGUAGE SQL
+;
+
+CREATE OR REPLACE FUNCTION parse_homu (Text) RETURNS code AS $$
+SELECT
+    code( array_agg( build_tree_homu(src) ) )
+FROM
+    unnest(
+        string_to_array(sanitize_source_homu($1), E'\n')
+    ) AS t(src)
+WHERE
+    src <> ''
+$$ LANGUAGE SQL
+;
+
+CREATE OR REPLACE FUNCTION run_homu (Text) RETURNS text AS $$
+SELECT
+    exec( parse_homu($1) )
+$$ LANGUAGE SQL
+;
